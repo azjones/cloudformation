@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SQL Server Stack
+Parameters:
+  SqlDbUsername:
+    Type: String
+    Default: sqluser
+  SqlDbPassword:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: SqlDbPassword
+    MinLength: 8
+Resources:
+  SqlSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SQL Server Access
+      VpcId: !ImportValue VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 1433
+        ToPort: 1433
+        CidrIp: 0.0.0.0/0
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets
+      SubnetIds:
+      - !ImportValue PublicSubnetA
+      - !ImportValue PublicSubnetB
+  SqlDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      LicenseModel: license-included
+      AllocatedStorage: 20
+      DBInstanceClass: db.t2.micro
+      Engine: sqlserver-ex
+      EngineVersion: 14.00.3015.40.v1
+      MasterUsername: !Ref SqlDbUsername
+      MasterUserPassword: !Ref SqlDbPassword
+      PubliclyAccessible: true
+      VPCSecurityGroups:
+      - !Ref SqlSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+Outputs:
+  SqlDatabaseEndpoint:
+    Value: !Sub "${SqlDBInstance.Endpoint.Address}"
+    Export:
+      Name: SqlDatabaseEndpoint

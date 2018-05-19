@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Postgres Stack
+Parameters:
+  PostgresDbName:
+    Type: String
+    Default: fleet
+  PostgresDbUsername:
+    Type: String
+    Default: sqluser
+  PostgresDbPassword:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: PostgresDbPassword
+  PostgresSecurityGroup:
+    Type: String
+  PublicSubnetZoneA:
+    Type: String
+  PublicSubnetZoneB:
+    Type: String
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets
+      SubnetIds:
+        - !Ref PublicSubnetZoneA
+        - !Ref PublicSubnetZoneB
+  PostgresDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref PostgresDbName
+      AllocatedStorage: 5
+      DBInstanceClass: db.t2.micro
+      Engine: postgres
+      EngineVersion: 9.6.6
+      MasterUsername: !Ref PostgresDbUsername
+      MasterUserPassword: !Ref PostgresDbPassword
+      PubliclyAccessible: true
+      VPCSecurityGroups:
+        - !Ref PostgresSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+Outputs:
+  PostgresDatabaseEndpoint:
+    Value: !Sub "${PostgresDBInstance.Endpoint.Address}"
+    Export:
+      Name: PostgresDatabaseEndpoint

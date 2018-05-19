@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: KMS key for secrets management (see Parameters for more info)
+Parameters:
+  KeyNamespace:
+    Type: String
+    Default: s3kr3t
+Resources:
+  KmsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${KeyNamespace}"
+      TargetKeyId: !Ref KmsKey
+  KmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "Manages secrets in the ${KeyNamespace} namespace"
+      Enabled: true
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: KeyPolicyForKMS
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+Outputs:
+  KmsKeyId:
+    Description: ID of the KMS key
+    Value: !Ref KmsKey
+    Export:
+      Name: !Sub "kms:key:${KeyNamespace}:id"
+  KmsKeyArn:
+    Description: ARN of the KMS key
+    Value: !GetAtt KmsKey.Arn
+    Export:
+      Name: !Sub "kms:key:${KeyNamespace}:arn"
