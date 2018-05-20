@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Vpc Peer Connection
+Parameters:
+  PeerVPCAccountId:
+    Type: String
+    Default: 123456789012
+  PeerVPCId:
+    Type: String
+    Default: vpc-8765309a
+  PeerVPCArn:
+    Type: String
+    Default: arn:aws:iam::123456789012:role/vpc-peering
+  PeerCidrBlock:
+    Type: String
+    Default: 172.16.0.0/16
+Resources:
+  VpcPeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !ImportValue Vpc
+      PeerVpcId: !Ref PeerVPCId
+      PeerOwnerId: !Ref PeerVPCAccountId
+      PeerRoleArn: !Ref PeerVPCArn
+  PrivateRouteToPeerZoneA:
+    Type: AWS::EC2::Route
+    DependsOn: VpcPeeringConnection
+    Properties:
+      RouteTableId: !ImportValue PrivateRouteTableA
+      DestinationCidrBlock: !Ref PeerCidrBlock
+      VpcPeeringConnectionId: !Ref VpcPeeringConnection

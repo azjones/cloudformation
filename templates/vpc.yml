@@ -1,14 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: VPC Stack, 2 Availability Zones
+Description: Vpc Stack, 2 Availability Zones
 Parameters:
   Octal:
     Type: Number
     Default: 0
     MinValue: 0
     MaxValue: 255
-    Description: Octal B value of VPC Cidr
+    Description: Octet value of Vpc Cidr
 Resources:
-  VPC:
+  Vpc:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: !Sub '10.${Octal}.0.0/16'
@@ -17,20 +17,20 @@ Resources:
       InstanceTenancy: default
       Tags:
       - Key: Name
-        Value: 'VPC, 2 Availability Zones'
+        Value: 'Vpc, 2 Availability Zones'
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
       - Key: Name
         Value: !Sub '10.${Octal}.0.0/16'
-  VPCGatewayAttachment:
+  VpcGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       InternetGatewayId: !Ref InternetGateway
   NatGatewayA:
-    DependsOn: VPCGatewayAttachment
+    DependsOn: VpcGatewayAttachment
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId:
@@ -43,7 +43,7 @@ Resources:
     Properties:
       Domain: vpc
   NatGatewayB:
-    DependsOn: VPCGatewayAttachment
+    DependsOn: VpcGatewayAttachment
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId:
@@ -64,7 +64,7 @@ Resources:
         - Fn::GetAZs: !Ref AWS::Region
       CidrBlock: !Sub '10.${Octal}.1.0/24'
       MapPublicIpOnLaunch: true
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Public Subnet Zone A
@@ -77,7 +77,7 @@ Resources:
         - Fn::GetAZs: !Ref AWS::Region
       CidrBlock: !Sub '10.${Octal}.2.0/24'
       MapPublicIpOnLaunch: true
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Public Subnet Zone B
@@ -89,7 +89,7 @@ Resources:
         - 0
         - Fn::GetAZs: !Ref AWS::Region
       CidrBlock: !Sub '10.${Octal}.3.0/24'
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Private Subnet Zone A
@@ -101,35 +101,35 @@ Resources:
         - 1
         - Fn::GetAZs: !Ref AWS::Region
       CidrBlock: !Sub '10.${Octal}.4.0/24'
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Zone B private subnet
   PublicRouteTableA:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Zone A Public Route Table
   PublicRouteTableB:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Zone B Public Route Table
   PrivateRouteTableA:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Zone A Private Route Table
   PrivateRouteTableB:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Zone B Private Route Table
@@ -155,14 +155,14 @@ Resources:
       RouteTableId: !Ref PrivateRouteTableB
   PublicRouteTableInternetRouteA:
     Type: AWS::EC2::Route
-    DependsOn: VPCGatewayAttachment
+    DependsOn: VpcGatewayAttachment
     Properties:
       RouteTableId: !Ref PublicRouteTableA
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
   PublicRouteTableInternetRouteB:
     Type: AWS::EC2::Route
-    DependsOn: VPCGatewayAttachment
+    DependsOn: VpcGatewayAttachment
     Properties:
       RouteTableId: !Ref PublicRouteTableB
       DestinationCidrBlock: 0.0.0.0/0
@@ -182,14 +182,14 @@ Resources:
   PublicNetworkAcl:
     Type: AWS::EC2::NetworkAcl
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Public Network ACL
   PrivateNetworkAcl:
     Type: AWS::EC2::NetworkAcl
     Properties:
-      VpcId: !Ref VPC
+      VpcId: !Ref Vpc
       Tags:
       - Key: Name
         Value: Private Network ACL
@@ -250,10 +250,10 @@ Resources:
       Egress: true
       CidrBlock: 0.0.0.0/0
 Outputs:
-  VPC:
-    Value: !Ref VPC
+  Vpc:
+    Value: !Ref Vpc
     Export:
-      Name: VPC
+      Name: Vpc
   PublicSubnetA:
     Value: !Ref PublicSubnetA
     Export:
