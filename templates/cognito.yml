@@ -143,12 +143,12 @@ Outputs:
   UserPoolId:
     Value: !Ref UserPool
     Export:
-      Name: "UserPool::Id"
+      Name: "UserPoolId"
   UserPoolClientId:
     Value: !Ref UserPoolClient
     Export:
-      Name: "UserPoolClient::Id"
+      Name: "UserPoolClientId"
   IdentityPoolId:
     Value: !Ref IdentityPool
     Export:
-      Name: "IdentityPool::Id"
+      Name: "IdentityPoolId"
