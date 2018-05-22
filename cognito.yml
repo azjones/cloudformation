@@ -52,9 +52,6 @@ Resources:
           AttributeDataType: String
           Mutable: false
           Required: true
-        - Name: slackId
-          AttributeDataType: String
-          Mutable: true
   # Creates a User Pool Client to be used by the identity pool
   UserPoolClient:
     Type: "AWS::Cognito::UserPoolClient"
