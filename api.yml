@@ -1,0 +1,422 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Api Stack, cloudfront, waf, api
+Parameters:
+  CNAME:
+    Type: String
+    Default: api.mydomain.com
+  CertificateArn:
+    Type: String
+    Description: A valid ssl certificate arn
+  SqlInjectionProtectionParam:
+    Type: String
+    Default: 'yes'
+    AllowedValues:
+      - 'yes'
+      - 'no'
+    Description: Choose yes to enable the component designed to block common SQL injection
+      attacks.
+  CrossSiteScriptingProtectionParam:
+    Type: String
+    Default: 'yes'
+    AllowedValues:
+      - 'yes'
+      - 'no'
+    Description: Choose yes to enable the component designed to block common XSS attacks.
+  ActivateScansProbesProtectionParam:
+    Type: String
+    Default: 'yes'
+    AllowedValues:
+      - 'yes'
+      - 'no'
+    Description: Choose yes to enable the component designed to block scanners and probes.
+Conditions:
+  SqlInjectionProtectionActivated:
+    !Equals
+      - !Ref SqlInjectionProtectionParam
+      - 'yes'
+  CrossSiteScriptingProtectionActivated:
+    !Equals
+      - !Ref CrossSiteScriptingProtectionParam
+      - 'yes'
+  CreateWebACL:
+    !Or
+      - Condition: SqlInjectionProtectionActivated
+      - Condition: CrossSiteScriptingProtectionActivated
+Resources:
+  WafWhitelistSet:
+    Type: AWS::WAF::IPSet
+    Condition: CreateWebACL
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - Whitelist Set
+  WafBlacklistSet:
+    Type: AWS::WAF::IPSet
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - Blacklist Set
+  
+  WafSqlInjectionDetection:
+    Type: AWS::WAF::SqlInjectionMatchSet
+    Condition: SqlInjectionProtectionActivated
+    Properties:
+      Name:
+        !Join
+          - " - "
+          - - !Ref AWS::StackName
+            - SQL injection Detection
+      SqlInjectionMatchTuples:
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Cookie
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Authorization
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: HEADER
+            Data: Authorization
+          TextTransformation: HTML_ENTITY_DECODE
+  
+  WafXssDetection:
+    Type: AWS::WAF::XssMatchSet
+    Condition: CrossSiteScriptingProtectionActivated
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - XSS Detection Detection
+      XssMatchTuples:
+      - FieldToMatch:
+          Type: QUERY_STRING
+        TextTransformation: URL_DECODE
+      - FieldToMatch:
+          Type: QUERY_STRING
+        TextTransformation: HTML_ENTITY_DECODE
+      - FieldToMatch:
+          Type: BODY
+        TextTransformation: URL_DECODE
+      - FieldToMatch:
+          Type: BODY
+        TextTransformation: HTML_ENTITY_DECODE
+      - FieldToMatch:
+          Type: URI
+        TextTransformation: URL_DECODE
+      - FieldToMatch:
+          Type: URI
+        TextTransformation: HTML_ENTITY_DECODE
+      - FieldToMatch:
+          Type: HEADER
+          Data: Cookie
+        TextTransformation: URL_DECODE
+      - FieldToMatch:
+          Type: HEADER
+          Data: Cookie
+        TextTransformation: HTML_ENTITY_DECODE
+  WafWhitelistRule:
+    Type: AWS::WAF::Rule
+    Condition: CreateWebACL
+    DependsOn: WafWhitelistSet
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - Whitelist Rule
+      MetricName: SecurityAutomationsWhitelistRule
+      Predicates:
+        - DataId: !Ref WafWhitelistSet
+          Negated: false
+          Type: IPMatch
+  WafBlacklistRule:
+    Type: AWS::WAF::Rule
+    DependsOn: WafBlacklistSet
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - Blacklist Rule
+      MetricName: SecurityAutomationsBlacklistRule
+      Predicates:
+        - DataId: !Ref WafBlacklistSet
+          Negated: false
+          Type: IPMatch
+
+  WafSqlInjectionRule:
+    Type: AWS::WAF::Rule
+    Condition: SqlInjectionProtectionActivated
+    DependsOn: WafSqlInjectionDetection
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - SQL Injection Rule
+      MetricName: SecurityAutomationsSqlInjectionRule
+      Predicates:
+        - DataId: !Ref WafSqlInjectionDetection
+          Negated: false
+          Type: SqlInjectionMatch
+  WafXssRule:
+    Type: AWS::WAF::Rule
+    Condition: CrossSiteScriptingProtectionActivated
+    DependsOn: WafXssDetection
+    Properties:
+      Name:
+        !Join
+        - " - "
+        - - !Ref AWS::StackName
+          - XSS Rule
+      MetricName: SecurityAutomationsXssRule
+      Predicates:
+        - DataId: !Ref WafXssDetection
+          Negated: false
+          Type: XssMatch
+  WafWebACL:
+    Type: AWS::WAF::WebACL
+    Condition: CreateWebACL
+    DependsOn:
+      - WafWhitelistRule
+    Properties:
+      Name: !Ref AWS::StackName
+      DefaultAction:
+        Type: ALLOW
+      MetricName: SecurityAutomationsMaliciousRequesters
+      Rules:
+        - Action:
+            Type: BLOCK
+          Priority: 1
+          RuleId: !Ref WafBlacklistRule
+        - Action:
+            Type: BLOCK
+          Priority: 2
+          RuleId: !Ref WafSqlInjectionRule
+        - Action:
+            Type: BLOCK
+          Priority: 3
+          RuleId: !Ref WafXssRule
+        - Action:
+            Type: ALLOW
+          Priority: 10
+          RuleId: !Ref WafWhitelistRule
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: BucketOwnerFullControl
+      BucketName: !Sub "api-logs-${AWS::AccountId}-${AWS::Region}"
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: 30
+            Status: Enabled
+  Api:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: platform-api
+      Description: platform api
+      FailOnWarnings: true
+  ApiCatchAllResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId:
+        Fn::GetAtt:
+          - Api
+          - RootResourceId
+      PathPart: "{proxy+}"
+  CORSApiCatchAllResource:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref Api
+      ResourceId: !Ref ApiCatchAllResource
+      HttpMethod: OPTIONS
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,x-request-id,x-expiration,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'*'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: NEVER
+        RequestTemplates:
+          application/json: "{'statusCode': 200}"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+  GatewayDeployment:
+    DependsOn:
+      - CORSApiCatchAllResource
+      - ApiCatchAllResource
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref Api
+      Description: Gateway deployment
+      StageName: dev
+  ApiInfoDataModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref Api
+      ContentType: application/json
+      Name: InfoDataModel
+      Schema:
+        "$schema": http://json-schema.org/draft-04/schema#
+        title: InfoDataModel
+        type: object
+        properties:
+          version:
+            type: string
+  ApiRootGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref Api
+      ResourceId:
+        Fn::GetAtt:
+          - Api
+          - RootResourceId
+      HttpMethod: GET
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: '{"version":"1.0.0"}'
+        PassthroughBehavior: NEVER
+        RequestTemplates:
+          application/json: "{'statusCode': 200}"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json:
+              Ref: ApiInfoDataModel
+
+  ApiDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Restrictions:
+          GeoRestriction:
+            Locations:
+              - US
+              - CA
+            RestrictionType: whitelist
+        PriceClass: PriceClass_100
+        Origins:
+          - DomainName:
+              Fn::Sub: "${Api}.execute-api.${AWS::Region}.amazonaws.com"
+            Id: platform-api
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+            OriginPath: "/api"
+        Enabled: true
+        Aliases:
+          - !Ref CNAME
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - HEAD
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+            - PATCH
+          DefaultTTL: 0
+          MinTTL: 0
+          MaxTTL: 0
+          TargetOriginId: platform-api
+          ForwardedValues:
+            Headers:
+              - Authorization
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+            QueryString: true
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: redirect-to-https
+        CustomErrorResponses:
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 400
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 403
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 404
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 405
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 414
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 500
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 501
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 502
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 503
+        - ErrorCachingMinTTL: 0
+          ErrorCode: 504
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+        WebACLId: !Ref WafWebACL
+        Logging:
+          Bucket:
+            Fn::GetAtt:
+              - LogsBucket
+              - DomainName
+
+Outputs:
+  WafId:
+    Value: !Ref WafWebACL
+    Export:
+      Name: WafId
+  ApiId:
+    Value: !Ref Api
+    Export:
+      Name: ApiId
+  RootResourceId:
+    Value: !GetAtt Api.RootResourceId
+    Export:
+      Name: RootResourceId
+  DomainName:
+    Value: !GetAtt ApiDistribution.DomainName
+    Export:
+      Name: DomainName

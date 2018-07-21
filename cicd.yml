@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CICD Pipeline
+Parameters:
+  GithubUser:
+    Type: String
+  GithubRepository:
+    Type: String
+  GithubBranch:
+    Type: String
+    Default: master
+  GithubAccessToken:
+    Type: String
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: BucketOwnerFullControl
+      BucketName: !Sub cicd-artifacts-services-${AWS::AccountId}-${AWS::Region}
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: BucketOwnerFullControl
+      BucketName: !Sub sls-deploys-${AWS::AccountId}-${AWS::Region}
+  CloudFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    DependsOn: [CloudFormationRole]
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    DependsOn: [CloudFormationRole]
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: services-build
+      Artifacts:
+        Type: CODEPIPELINE
+        Name: services-build
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/nodejs:8.11.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: GithubRepo
+            Value: !Ref GithubRepository
+            Type: PLAINTEXT
+          - Name: GithubUser
+            Value: !Ref GithubUser
+            Type: PLAINTEXT
+          - Name: GithubAccessToken
+            Value: !Ref GithubAccessToken
+            Type: PLAINTEXT
+      ServiceRole: !Ref CodeBuildRole
+      Source:
+        Type: CODEPIPELINE
+  CodeTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: services-test
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/nodejs:8.11.0
+        Type: LINUX_CONTAINER
+      ServiceRole: !Ref CodeBuildRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - npm i -g npm
+                - npm i jest-cli
+            build:
+              commands:
+                - npm run test
+  CodeDeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: services-deploy
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/nodejs:8.11.0
+        Type: LINUX_CONTAINER
+      ServiceRole: !Ref CodeBuildRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - sudo apt-get update
+                - sudo apt-get -y install jq
+                - npm i -g npm
+                - npm install -g serverless
+            build:
+              commands:
+                - sls deploy --stage api --package ../../packages/$dir | tee /tmp/deploy.out
+  CodePipelineStack:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: services-pipeline
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt 'CodePipelineRole.Arn'
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GithubUser
+                Repo: !Ref GithubRepository
+                Branch: !Ref GithubBranch
+                OAuthToken: !Ref GithubAccessToken
+              OutputArtifacts:
+                -  Name: LambdaService
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName:
+                  Ref: CodeBuildProject
+              InputArtifacts:
+                - Name: LambdaService
+              OutputArtifacts:
+                - Name: LambdaServiceBuild
+              RunOrder: 1
+        - Name: Test
+          Actions:
+            - Name: Test
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName:
+                    Ref: CodeTestProject
+              InputArtifacts:
+                - Name: LambdaServiceBuild
+              OutputArtifacts:
+                - Name: LambdaServiceTest
+              RunOrder: 1
+        - Name: Release
+          Actions:
+            - Name: Release
+              InputArtifacts:
+                - Name: LambdaServiceBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName:
+                  Ref: CodeDeployProject
+              RunOrder: 1
+Outputs:
+  ArtifactBucket:
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: ArtifactBucket
+  DeploymentBucket:
+    Value: !Ref DeploymentBucket
+    Export:
+      Name: DeploymentBucket
